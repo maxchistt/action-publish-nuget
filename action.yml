@@ -1,0 +1,50 @@
+name: 'Publish latest release to nuget'
+description: 'Checkout to version of last release, build, test and publish on nuget.org package with same version as release'
+inputs:
+  NUGET_APIKEY:
+    description: 'API key for nuget package publishing'
+    required: true
+  working-directory:
+    description: 'Subdirectory of project to publish'
+    required: true
+    default: './'
+runs:
+  using: "composite"
+  steps:
+    - name: Break if no NUGET_APIKEY
+      if: ${{ inputs.NUGET_APIKEY == '' }}
+      run: exit 1
+    - id: lastVersion
+      name: lastVersion
+      uses: pozetroninc/github-action-get-latest-release@master
+      with:
+        repository: ${{ github.repository }}
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ steps.lastVersion.outputs.release }}
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v3
+    - name: Build
+      working-directory: ${{ inputs.working-directory }}
+      run: dotnet build -c Release
+    - name: Test
+      run: dotnet test -c Release
+    - uses: actions-ecosystem/action-regex-match@v2
+      id: regex-match
+      name: regex-match
+      with:
+        text: ${{ steps.lastVersion.outputs.release }}
+        regex: '\d+\.\d+\.\d+(\.\d+)?'
+    - name: Break if no version
+      if: ${{ steps.regex-match.outputs.match == '' }}
+      run: exit 1
+    - name: Pack nugets
+      working-directory: ${{ inputs.working-directory }}
+      run: dotnet pack -c Release -p:Version=${{ steps.regex-match.outputs.group1 }} -p:PackageVersion=${{ steps.regex-match.outputs.group1 }} --no-build --output .
+    - name: Push to NuGet
+      working-directory: ${{ inputs.working-directory }}
+      run: dotnet nuget push "*.nupkg" --api-key ${{ inputs.NUGET_APIKEY }} --source https://api.nuget.org/v3/index.json
+branding:
+  icon: arrow-up-circle
+  color: purple
