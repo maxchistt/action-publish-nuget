@@ -12,37 +12,62 @@ runs:
   using: "composite"
   steps:
     - name: Break if no NUGET_APIKEY
+      shell: bash
       if: ${{ inputs.NUGET_APIKEY == '' }}
       run: exit 1
+      
     - id: lastVersion
       name: lastVersion
       uses: pozetroninc/github-action-get-latest-release@master
       with:
         repository: ${{ github.repository }}
-    - name: Checkout
-      uses: actions/checkout@v3
-      with:
-        ref: ${{ steps.lastVersion.outputs.release }}
-    - name: Setup .NET SDK
-      uses: actions/setup-dotnet@v3
-    - name: Build
-      working-directory: ${{ inputs.working-directory }}
-      run: dotnet build -c Release
-    - name: Test
-      run: dotnet test -c Release
+      
+    - name: Show release version
+      shell: bash
+      run: echo Release version ${{ steps.lastVersion.outputs.release }}
+    - name: Break if no release version
+      shell: bash
+      if: ${{ steps.lastVersion.outputs.release == '' }}
+      run: exit 1
+      
     - uses: actions-ecosystem/action-regex-match@v2
       id: regex-match
       name: regex-match
       with:
         text: ${{ steps.lastVersion.outputs.release }}
         regex: '\d+\.\d+\.\d+(\.\d+)?'
-    - name: Break if no version
+      
+    - name: Show nuget version
+      shell: bash
+      run: echo Version match ${{ steps.regex-match.outputs.match }}
+    - name: Break if no nuget version
+      shell: bash
       if: ${{ steps.regex-match.outputs.match == '' }}
       run: exit 1
+      
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ steps.lastVersion.outputs.release }}
+      
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v3
+    - name: Build
+      shell: bash
+      working-directory: ./JsonProperty.EFCore
+      run: dotnet build -c Release
+    - name: Test
+      shell: bash
+      run: dotnet test -c Release
+      
     - name: Pack nugets
+      if: ${{ steps.regex-match.outputs.match != '' }}
+      shell: bash
       working-directory: ${{ inputs.working-directory }}
-      run: dotnet pack -c Release -p:Version=${{ steps.regex-match.outputs.group1 }} -p:PackageVersion=${{ steps.regex-match.outputs.group1 }} --no-build --output .
+      run: dotnet pack -c Release -p:Version=${{ steps.regex-match.outputs.match }} -p:PackageVersion=${{ steps.regex-match.outputs.match }} --no-build --output .
     - name: Push to NuGet
+      if: ${{ steps.regex-match.outputs.match != '' }}
+      shell: bash
       working-directory: ${{ inputs.working-directory }}
       run: dotnet nuget push "*.nupkg" --api-key ${{ inputs.NUGET_APIKEY }} --source https://api.nuget.org/v3/index.json
 branding:
